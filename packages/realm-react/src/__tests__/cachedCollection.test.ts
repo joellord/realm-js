@@ -60,7 +60,6 @@ enum QueryType {
   sorted,
   normal,
 }
-
 describe.each`
   queryTypeName | queryType
   ${"normal"}   | ${QueryType.normal}
@@ -69,6 +68,7 @@ describe.each`
 `("cachedCollection: $queryTypeName", ({ queryType }) => {
   const cacheMap = new Map();
   let realm = new Realm(realmConfig);
+
   function getTestCollection(queryType: QueryType) {
     switch (queryType) {
       case QueryType.filtered:
@@ -80,9 +80,21 @@ describe.each`
     }
   }
 
+  function applyQueryTypeToCollection<T>(queryType: QueryType, collection: Realm.Results<T>) {
+    switch (queryType) {
+      case QueryType.filtered:
+        return collection.filtered(...FILTER_ARGS);
+      case QueryType.sorted:
+        return collection.sorted(...SORTED_ARGS);
+      case QueryType.normal:
+        return collection;
+    }
+  }
+
   beforeEach(() => {
     realm = new Realm(realmConfig);
     realm.write(() => {
+      realm.deleteAll();
       testCollection.forEach((object) => realm.create(TestObject, object));
     });
   });
@@ -90,7 +102,6 @@ describe.each`
   afterEach(() => {
     realm.write(() => {
       realm.removeAllListeners();
-      realm.deleteAll();
     });
     realm.close();
     Realm.clearTestState();
@@ -99,17 +110,22 @@ describe.each`
 
   it("caches accessed objects", async () => {
     const updateFunction = jest.fn();
-    const { collection, tearDown } = cachedCollection(getTestCollection(queryType), updateFunction, cacheMap);
+    const { collection, tearDown } = cachedCollection(realm.objects(TestObject), updateFunction, cacheMap);
 
     expect(cacheMap.size).toBe(0);
 
-    let item = collection[0];
-    for (let i = 0; i < TEST_COLLECTION_SIZE; i++) {
-      item = collection[i];
+    const testCollection = applyQueryTypeToCollection(queryType, collection);
+
+    let item = testCollection[0];
+    for (let i = 0; i < testCollection.length; i++) {
+      item = testCollection[i];
     }
 
-    expect(item).toBe(collection[TEST_COLLECTION_SIZE - 1]);
-    expect(cacheMap.size).toBe(TEST_COLLECTION_SIZE);
+    const lastItem = testCollection[testCollection.length - 1];
+
+    expect(item).toEqual(lastItem);
+    expect(item === lastItem).toEqual(true);
+    expect(cacheMap.size).toBe(testCollection.length);
 
     tearDown();
   });
@@ -154,12 +170,12 @@ describe.each`
     expect(cacheMap.size).toBe(0);
 
     let item = collection[0];
-    for (let i = 0; i < TEST_COLLECTION_SIZE; i++) {
+    for (let i = 0; i < collection.length; i++) {
       item = collection[i];
     }
 
-    expect(item).toBe(collection[TEST_COLLECTION_SIZE - 1]);
-    expect(cacheMap.size).toBe(TEST_COLLECTION_SIZE);
+    expect(item).toBe(collection[collection.length - 1]);
+    expect(cacheMap.size).toBe(collection.length);
 
     realm.write(() => {
       realm.delete(item);
@@ -168,7 +184,7 @@ describe.each`
     forceSynchronousNotifications(realm);
 
     expect(item.isValid()).toEqual(false);
-    expect(cacheMap.size).toBe(TEST_COLLECTION_SIZE - 1);
+    expect(cacheMap.size).toBe(collection.length);
 
     realm.write(() => {
       realm.deleteAll();
@@ -188,12 +204,12 @@ describe.each`
     expect(cacheMap.size).toBe(0);
 
     let item = collection[0];
-    for (let i = 0; i < TEST_COLLECTION_SIZE; i++) {
+    for (let i = 0; i < collection.length; i++) {
       item = collection[i];
     }
 
-    expect(item).toBe(collection[TEST_COLLECTION_SIZE - 1]);
-    expect(cacheMap.size).toBe(TEST_COLLECTION_SIZE);
+    expect(item).toBe(collection[collection.length - 1]);
+    expect(cacheMap.size).toBe(collection.length);
 
     realm.write(() => {
       item.name = "bob";
@@ -201,8 +217,8 @@ describe.each`
 
     forceSynchronousNotifications(realm);
 
-    expect(item).not.toBe(collection[TEST_COLLECTION_SIZE - 1]);
-    expect(cacheMap.size).toBe(TEST_COLLECTION_SIZE);
+    expect(item).not.toBe(collection[collection.length - 1]);
+    expect(cacheMap.size).toBe(collection.length);
 
     tearDown();
   });
@@ -214,12 +230,12 @@ describe.each`
     expect(cacheMap.size).toBe(0);
 
     let item = collection[0];
-    for (let i = 0; i < TEST_COLLECTION_SIZE; i++) {
+    for (let i = 0; i < collection.length; i++) {
       item = collection[i];
     }
 
-    expect(item).toBe(collection[TEST_COLLECTION_SIZE - 1]);
-    expect(cacheMap.size).toBe(TEST_COLLECTION_SIZE);
+    expect(item).toBe(collection[collection.length - 1]);
+    expect(cacheMap.size).toBe(collection.length);
 
     tearDown();
 
